@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Keg Fill with Twitch Chat</title>
+  <script src="./tmi.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      height: 100vh;
+      color: white;
+      font-family: sans-serif;
+    }
+
+    #wiggle {
+      width: 60px;
+      margin-bottom: -29px;
+    }
+
+    #keg-container {
+      position: relative;
+      width: 300px;
+      margin-bottom: 20px;
+    }
+
+    #sub-counter-wrapper {
+      position: absolute;
+      top: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(0, 0, 0, 0.6);
+      padding: 4px 12px;
+      border-radius: 12px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      pointer-events: none;
+      display: inline-block;
+    }
+
+    #sub-counter {
+      font-size: 13px;
+      font-weight: 900;
+      background: linear-gradient(90deg, #00b36b, #00e676);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-fill-color: transparent;
+    }
+
+    video {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Wiggle animation -->
+  <video id="wiggle" src="Wiggle.webm" muted loop playsinline></video>
+
+  <div id="keg-container">
+    <div id="sub-counter-wrapper">
+      <div id="sub-counter">0 / 25</div>
+    </div>
+    <video id="keg-video" muted playsinline>
+      <source src="Keg.webm" type="video/webm" />
+    </video>
+  </div>
+
+  <script>
+    const subGoal = 25;
+    let currentSubs = 0;
+    let videoSubs = 0;
+    let animationTargetSubs = 0;
+
+    const video = document.getElementById('keg-video');
+    const wiggle = document.getElementById('wiggle');
+
+    const startOffset = 0.8;
+    const fillDuration = 8.6 - 0.8;
+
+    let wiggleTimeout = null;
+    let wiggleReady = false;
+
+    wiggle.addEventListener('loadedmetadata', () => {
+      const freezeTime = (5 / 12) * wiggle.duration;
+      wiggle.currentTime = freezeTime;
+      wiggle.pause();
+      wiggleReady = true;
+    });
+
+    function playWiggleFor5Seconds() {
+      if (!wiggleReady) return;
+      if (wiggleTimeout) clearTimeout(wiggleTimeout);
+
+      wiggle.play();
+
+      wiggleTimeout = setTimeout(() => {
+        const freezeTime = (5 / 12) * wiggle.duration;
+        wiggle.pause();
+        wiggle.currentTime = freezeTime;
+        wiggleTimeout = null;
+      }, 5000);
+    }
+
+    video.addEventListener('loadedmetadata', () => {
+      seekToSubLevel(currentSubs);
+      videoSubs = Math.min(currentSubs, subGoal);
+      animationTargetSubs = videoSubs;
+    });
+
+    function seekToSubLevel(subs) {
+      const cappedSubs = Math.min(subs, subGoal);
+      const targetTime = startOffset + (cappedSubs / subGoal) * fillDuration;
+      video.currentTime = targetTime - 0.01;
+      video.pause();
+    }
+
+    function updateCounterDisplay() {
+      const counterElem = document.getElementById('sub-counter');
+      if (counterElem) {
+        counterElem.textContent = `${currentSubs} / ${subGoal}`;
+      }
+    }
+
+    function increaseSubs(amount = 1) {
+      const newSubs = currentSubs + amount;
+      if (newSubs <= currentSubs) return;
+
+      currentSubs = newSubs;
+      updateCounterDisplay();
+      playWiggleFor5Seconds();
+
+      const newVideoSubs = Math.min(newSubs, subGoal);
+      if (newVideoSubs > animationTargetSubs) {
+        animationTargetSubs = newVideoSubs;
+        if (video.paused) video.play();
+      }
+    }
+
+    video.addEventListener('timeupdate', () => {
+      const targetTime = startOffset + (animationTargetSubs / subGoal) * fillDuration;
+
+      if (video.currentTime >= targetTime) {
+        video.pause();
+        videoSubs = animationTargetSubs;
+      } else if (video.paused && animationTargetSubs > videoSubs) {
+        video.play();
+      }
+    });
+
+    function resetSubs(toNumber = 0) {
+      currentSubs = 0;
+      videoSubs = 0;
+      animationTargetSubs = 0;
+      updateCounterDisplay();
+      seekToSubLevel(0);
+
+      if (toNumber > 0) {
+        increaseSubs(toNumber);
+      }
+    }
+
+    const allowedUsers = ['kurah', 'medusaaa7'];
+
+    const client = new tmi.Client({
+      identity: {
+        username: 'giucedbot',
+        password: 'oauth:fzyvj9guxbs4tf9ctip4648f17cmnr'
+      },
+      channels: ['kurah']
+    });
+
+    client.connect().catch(console.error);
+
+    client.on('message', (channel, tags, message, self) => {
+      if (self) return;
+
+      const sender = tags['display-name']?.toLowerCase() || "";
+      if (!allowedUsers.includes(sender)) return;
+
+      const msg = message.trim().toLowerCase();
+
+      if (msg.startsWith('!reset')) {
+        const parts = msg.split(' ');
+        const resetValue = parts.length > 1 && !isNaN(parts[1]) ? parseInt(parts[1], 10) : 0;
+        resetSubs(resetValue);
+      } else {
+        increaseSubs(1);
+      }
+    });
+  </script>
+</body>
+</html>
